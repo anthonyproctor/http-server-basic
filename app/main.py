@@ -48,12 +48,10 @@ def handle_connection(conn, addr):
         # Read request body if needed
         body = ""
         if content_length > 0:
-            # Get the raw bytes
             request_bytes = request.encode()
             header_end_index = request_bytes.find(b"\r\n\r\n") + 4
             body_bytes = request_bytes[header_end_index:]
 
-            # If body not fully received, read the remaining
             while len(body_bytes) < content_length:
                 body_bytes += conn.recv(content_length - len(body_bytes))
 
@@ -62,16 +60,28 @@ def handle_connection(conn, addr):
         # Routing
         if path == "/":
             conn.sendall(b"HTTP/1.1 200 OK\r\n\r\n")
+
         elif path.startswith("/echo/"):
             echo = path[len("/echo/"):]
-            response = (
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/plain\r\n"
-                f"Content-Length: {len(echo)}\r\n"
-                "\r\n"
-                f"{echo}"
-            )
+            accept_encoding = headers.get("accept-encoding", "")
+            response_body = echo
+
+            response_headers = [
+                "HTTP/1.1 200 OK",
+                "Content-Type: text/plain"
+            ]
+
+            # Add gzip header if client supports it
+            if "gzip" in accept_encoding.lower():
+                response_headers.append("Content-Encoding: gzip")
+
+            response_headers.append(f"Content-Length: {len(response_body)}")
+            response_headers.append("")  # for blank line between headers and body
+            response_headers.append(response_body)
+
+            response = "\r\n".join(response_headers)
             conn.sendall(response.encode())
+
         elif path == "/user-agent":
             user_agent = headers.get("user-agent", "")
             response = (
@@ -82,6 +92,7 @@ def handle_connection(conn, addr):
                 f"{user_agent}"
             )
             conn.sendall(response.encode())
+
         elif path.startswith("/files/"):
             if not files_dir:
                 conn.sendall(b"HTTP/1.1 404 Not Found\r\n\r\n")
@@ -114,6 +125,7 @@ def handle_connection(conn, addr):
                     conn.sendall(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
             else:
                 conn.sendall(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n")
+
         else:
             conn.sendall(b"HTTP/1.1 404 Not Found\r\n\r\n")
 
