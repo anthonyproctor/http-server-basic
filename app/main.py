@@ -1,15 +1,20 @@
-import socket  # noqa: F401
+import socket
 
+HOST = '0.0.0.0'
+PORT = 4221
 
-def main():
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
-    print("Logs from your program will appear here!")
+# Create a TCP socket
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.bind((HOST, PORT))
+    server_socket.listen()
 
-    # Uncomment this to pass the first stage
-    #
-    server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
-    server_socket.accept() # wait for client
+    print(f"Listening on http://{HOST}:{PORT}...")
 
-
-if __name__ == "__main__":
-    main()
+    while True:
+        conn, addr = server_socket.accept()
+        with conn:
+            print(f"Connected by {addr}")
+            conn.recv(1024)  # We don't care what the request is yet
+            response = b"HTTP/1.1 200 OK\r\n\r\n"
+            conn.sendall(response)
