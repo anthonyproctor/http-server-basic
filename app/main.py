@@ -15,7 +15,7 @@ PORT = 4221
 
 def handle_connection(conn, addr):
     with conn:
-        request = conn.recv(1024).decode()
+        request = conn.recv(4096).decode()
         print(f"[{addr}] Received request:\n{request}")
 
         lines = request.splitlines()
@@ -32,34 +32,54 @@ def handle_connection(conn, addr):
 
         # Parse headers
         headers = {}
-        for line in lines[1:]:
+        i = 1
+        while i < len(lines):
+            line = lines[i]
+            i += 1
             if line == "":
                 break
             if ":" in line:
                 key, value = line.split(":", 1)
                 headers[key.strip().lower()] = value.strip()
 
+        # Handle Content-Length for request body (used in POST)
+        content_length = int(headers.get("content-length", 0))
+
+        # Read request body if needed
+        body = ""
+        if content_length > 0:
+            # Get the raw bytes
+            request_bytes = request.encode()
+            header_end_index = request_bytes.find(b"\r\n\r\n") + 4
+            body_bytes = request_bytes[header_end_index:]
+
+            # If body not fully received, read the remaining
+            while len(body_bytes) < content_length:
+                body_bytes += conn.recv(content_length - len(body_bytes))
+
+            body = body_bytes.decode()
+
         # Routing
         if path == "/":
             conn.sendall(b"HTTP/1.1 200 OK\r\n\r\n")
         elif path.startswith("/echo/"):
-            body = path[len("/echo/"):]
+            echo = path[len("/echo/"):]
             response = (
                 "HTTP/1.1 200 OK\r\n"
                 "Content-Type: text/plain\r\n"
-                f"Content-Length: {len(body)}\r\n"
+                f"Content-Length: {len(echo)}\r\n"
                 "\r\n"
-                f"{body}"
+                f"{echo}"
             )
             conn.sendall(response.encode())
         elif path == "/user-agent":
-            body = headers.get("user-agent", "")
+            user_agent = headers.get("user-agent", "")
             response = (
                 "HTTP/1.1 200 OK\r\n"
                 "Content-Type: text/plain\r\n"
-                f"Content-Length: {len(body)}\r\n"
+                f"Content-Length: {len(user_agent)}\r\n"
                 "\r\n"
-                f"{body}"
+                f"{user_agent}"
             )
             conn.sendall(response.encode())
         elif path.startswith("/files/"):
@@ -70,18 +90,30 @@ def handle_connection(conn, addr):
             filename = path[len("/files/"):]
             filepath = os.path.join(files_dir, filename)
 
-            if os.path.isfile(filepath):
-                with open(filepath, "rb") as f:
-                    body = f.read()
-                headers = (
-                    "HTTP/1.1 200 OK\r\n"
-                    "Content-Type: application/octet-stream\r\n"
-                    f"Content-Length: {len(body)}\r\n"
-                    "\r\n"
-                )
-                conn.sendall(headers.encode() + body)
+            if method == "GET":
+                if os.path.isfile(filepath):
+                    with open(filepath, "rb") as f:
+                        file_data = f.read()
+                    response_headers = (
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: application/octet-stream\r\n"
+                        f"Content-Length: {len(file_data)}\r\n"
+                        "\r\n"
+                    )
+                    conn.sendall(response_headers.encode() + file_data)
+                else:
+                    conn.sendall(b"HTTP/1.1 404 Not Found\r\n\r\n")
+
+            elif method == "POST":
+                try:
+                    with open(filepath, "w") as f:
+                        f.write(body)
+                    conn.sendall(b"HTTP/1.1 201 Created\r\n\r\n")
+                except Exception as e:
+                    print(f"Error writing file: {e}")
+                    conn.sendall(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
             else:
-                conn.sendall(b"HTTP/1.1 404 Not Found\r\n\r\n")
+                conn.sendall(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n")
         else:
             conn.sendall(b"HTTP/1.1 404 Not Found\r\n\r\n")
 
