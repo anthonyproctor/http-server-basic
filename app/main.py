@@ -1,3 +1,9 @@
+# This script implements a simple HTTP server that serves files from a specified directory.
+# It supports basic routing, including echoing back the request body and returning the User-Agent header.
+# It also handles file requests, returning the contents of files in the specified directory.
+# It uses threading to handle multiple connections concurrently.
+# Usage: python main.py --directory <path_to_directory>
+# Import necessary modules
 import socket
 import threading
 import os
