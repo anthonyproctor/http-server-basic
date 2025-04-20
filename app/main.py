@@ -1,24 +1,14 @@
-# This script implements a simple HTTP server that serves files from a specified directory.
-# It supports basic routing, including echoing back the request body and returning the User-Agent header.
-# It also handles file requests, returning the contents of files in the specified directory.
-# It uses threading to handle multiple connections concurrently.
-# Usage: python main.py --directory <path_to_directory>
-# Import necessary modules
 import socket
 import threading
 import os
 import sys
 
-# Parse --directory flag
+# Parse optional --directory flag
 files_dir = None
 if "--directory" in sys.argv:
     dir_index = sys.argv.index("--directory") + 1
     if dir_index < len(sys.argv):
         files_dir = sys.argv[dir_index]
-
-if not files_dir:
-    print("Error: --directory flag is required")
-    sys.exit(1)
 
 HOST = '0.0.0.0'
 PORT = 4221
@@ -73,6 +63,10 @@ def handle_connection(conn, addr):
             )
             conn.sendall(response.encode())
         elif path.startswith("/files/"):
+            if not files_dir:
+                conn.sendall(b"HTTP/1.1 404 Not Found\r\n\r\n")
+                return
+
             filename = path[len("/files/"):]
             filepath = os.path.join(files_dir, filename)
 
@@ -96,7 +90,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((HOST, PORT))
     server_socket.listen()
-    print(f"Server running on http://{HOST}:{PORT} — Serving files from: {files_dir}")
+    print(f"Server running on http://{HOST}:{PORT}" + (f" — Serving from: {files_dir}" if files_dir else ""))
 
     while True:
         conn, addr = server_socket.accept()
